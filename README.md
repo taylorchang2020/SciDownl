@@ -189,6 +189,27 @@ $ scidownl download --title "ImageNet Classification with Deep Convolutional Neu
 $ scidownl download --doi https://doi.org/10.1145/3375633 --pmid 31395057 --pmid 24686414
 ```
 
+#### Batch download DOIs from a file
+
+Use option `-D` or `--doi-file` to read many DOIs from a text file and download them all in one run. Put **one DOI per line**; blank lines and lines starting with `#` are ignored. DOIs from the file are merged with any `--doi` options.
+
+```text
+# dois.txt — one DOI per line, '#' lines are comments
+https://doi.org/10.1145/3375633
+10.3343/alm.2013.33.1.8
+10.1002/chin.197335038
+```
+
+```bash
+# Download every DOI listed in dois.txt into the ./papers/ directory
+$ scidownl download --doi-file dois.txt --out ./papers/
+
+# A file and inline --doi options can be combined
+$ scidownl download --doi-file dois.txt --doi https://doi.org/10.1145/2785956.2787496 --out ./papers/
+```
+
+Because more than one paper is downloaded, `--out` is always treated as a directory (see [Customize the output location](#customize-the-output-location-of-papers) below).
+
 #### Customize the output location of papers
 
 By default, the downloaded paper is named by the paper's title. With option `-o` or `--out`，you can customize the output location of downloaded papers, whcih could be an absolute path or a relative path, and a direcotry or a file path.

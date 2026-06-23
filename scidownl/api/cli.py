@@ -1,12 +1,32 @@
 # -*- coding: utf-8 -*-
 """Command line tool of scidownl."""
 import os.path
+from typing import List
 
 import click
 
 from ..log import get_logger
 
 logger = get_logger()
+
+
+def read_keywords_from_file(filepath: str) -> List[str]:
+    """Read keywords (e.g. DOIs), one per line, from a text file.
+
+    Surrounding whitespace is stripped from each line. Blank lines and
+    lines starting with '#' (comments) are ignored.
+
+    :param filepath: path to the text file.
+    :returns: a list of non-empty keywords in file order.
+    """
+    keywords = []
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line in f:
+            keyword = line.strip()
+            if not keyword or keyword.startswith('#'):
+                continue
+            keywords.append(keyword)
+    return keywords
 
 
 @click.group()
@@ -81,6 +101,11 @@ def list_domains():
 @click.option("-d", "--doi", multiple=True,
               help="DOI string. Specifying multiple DOIs is supported, "
                     "e.g., --doi FIRST_DOI --doi SECOND_DOI ... ")
+@click.option("-D", "--doi-file", type=click.Path(exists=True, dir_okay=False),
+              help="Path to a text file containing DOIs for batch download, one DOI per "
+                   "line (e.g., https://doi.org/10.1145/3375633). Blank lines and lines "
+                   "starting with '#' are ignored. DOIs from the file are merged with any "
+                   "--doi options.")
 @click.option("-p", "--pmid", multiple=True, type=int,
               help="PMID numbers. Specifying multiple PMIDs is supported, "
                    "e.g., --pmid FIRST_PMID --pmid SECOND_PMID ...")
@@ -102,12 +127,17 @@ def list_domains():
 @click.option("-x", "--proxy",
               help="Proxy with the format of SCHEME=PROXY_ADDRESS. e.g., --proxy http=http://127.0.0.1:7890.")
 @click.help_option("-h", "--help")
-def download(doi, pmid, title, out, scihub_url, proxy: str):
+def download(doi, doi_file, pmid, title, out, scihub_url, proxy: str):
     """Download paper(s) by DOI or PMID."""
     from ..core.task import ScihubTask
     from ..config import get_config
 
     configs = get_config()
+
+    # Merge DOIs read from a file (batch download) with --doi options.
+    doi = list(doi)
+    if doi_file is not None:
+        doi += read_keywords_from_file(doi_file)
 
     logger.info("Run scihub tasks. Tasks information: ")
     if len(doi) > 0:
