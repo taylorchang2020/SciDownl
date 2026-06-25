@@ -1,12 +1,59 @@
 # -*- coding: utf-8 -*-
 """Command line tool of scidownl."""
 import os.path
+from typing import List, Optional, Tuple
 
 import click
 
 from ..log import get_logger
 
 logger = get_logger()
+
+
+def read_keywords_from_file(filepath: str) -> List[str]:
+    """Read keywords (e.g. DOIs), one per line, from a text file.
+
+    Surrounding whitespace is stripped from each line. Blank lines and
+    lines starting with '#' (comments) are ignored.
+
+    :param filepath: path to the text file.
+    :returns: a list of non-empty keywords in file order.
+    """
+    keywords = []
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line in f:
+            keyword = line.strip()
+            if not keyword or keyword.startswith('#'):
+                continue
+            keywords.append(keyword)
+    return keywords
+
+
+def read_doi_file(filepath: str) -> List[Tuple[str, Optional[str]]]:
+    """Read DOI entries for batch download from a text file.
+
+    Each non-empty, non-comment line is one of:
+
+    - ``DOI``               -> ``(doi, None)``
+    - ``DOI,OUTPUT_PATH``   -> ``(doi, output_path)``
+
+    The first comma separates the DOI from an optional per-paper output
+    path (the DOI is everything before it), so the path may itself contain
+    commas. Blank lines and lines starting with '#' are ignored, and
+    surrounding whitespace is stripped from both fields.
+
+    :param filepath: path to the manifest file.
+    :returns: a list of ``(doi, output_path_or_None)`` tuples in file order.
+    """
+    entries = []
+    for line in read_keywords_from_file(filepath):
+        doi, sep, out = line.partition(',')
+        doi = doi.strip()
+        out = out.strip() if sep else ''
+        if not doi:
+            continue
+        entries.append((doi, out or None))
+    return entries
 
 
 @click.group()
@@ -81,6 +128,13 @@ def list_domains():
 @click.option("-d", "--doi", multiple=True,
               help="DOI string. Specifying multiple DOIs is supported, "
                     "e.g., --doi FIRST_DOI --doi SECOND_DOI ... ")
+@click.option("-D", "--doi-file", type=click.Path(exists=True, dir_okay=False),
+              help="Path to a text file containing DOIs for batch download, one DOI per "
+                   "line (e.g., https://doi.org/10.1145/3375633). A per-paper output path "
+                   "may be appended after a comma, e.g. "
+                   "'https://doi.org/10.1145/3375633,papers/a.pdf'; that path overrides "
+                   "--out for that line. Blank lines and lines starting with '#' are "
+                   "ignored. DOIs from the file are merged with any --doi options.")
 @click.option("-p", "--pmid", multiple=True, type=int,
               help="PMID numbers. Specifying multiple PMIDs is supported, "
                    "e.g., --pmid FIRST_PMID --pmid SECOND_PMID ...")
@@ -102,16 +156,22 @@ def list_domains():
 @click.option("-x", "--proxy",
               help="Proxy with the format of SCHEME=PROXY_ADDRESS. e.g., --proxy http=http://127.0.0.1:7890.")
 @click.help_option("-h", "--help")
-def download(doi, pmid, title, out, scihub_url, proxy: str):
+def download(doi, doi_file, pmid, title, out, scihub_url, proxy: str):
     """Download paper(s) by DOI or PMID."""
     from ..core.task import ScihubTask
     from ..config import get_config
 
     configs = get_config()
 
+    # DOIs from --doi options (these share the --out value).
+    doi = list(doi)
+    # DOI entries from --doi-file may carry their own per-paper output path.
+    doi_file_entries = read_doi_file(doi_file) if doi_file is not None else []
+    all_dois = doi + [entry_doi for entry_doi, _ in doi_file_entries]
+
     logger.info("Run scihub tasks. Tasks information: ")
-    if len(doi) > 0:
-        logger.info("%15s: %s" % ("DOI(s)", list(doi)))
+    if len(all_dois) > 0:
+        logger.info("%15s: %s" % ("DOI(s)", all_dois))
     if len(pmid) > 0:
         logger.info("%15s: %s" % ("PMID(s)", list(pmid)))
     if len(title) > 0:
@@ -128,7 +188,7 @@ def download(doi, pmid, title, out, scihub_url, proxy: str):
         logger.info("%15s: %s" % ("SciHub Url", scihub_url))
 
     # Always consider out as a directory if there are multiple DOIs and PMIDs.
-    if len(doi) + len(pmid) + len(title) > 1:
+    if len(all_dois) + len(pmid) + len(title) > 1:
         if out is not None and out[-1] != "/":
             out = out + '/'
 
@@ -154,6 +214,15 @@ def download(doi, pmid, title, out, scihub_url, proxy: str):
             'source_type': 'doi',
             'scihub_url': scihub_url,
             'out': out,
+            'proxies': proxies
+        })
+    # File entries use their own output path when provided, else fall back to --out.
+    for doi_item, entry_out in doi_file_entries:
+        tasks.append({
+            'source_keyword': doi_item,
+            'source_type': 'doi',
+            'scihub_url': scihub_url,
+            'out': entry_out if entry_out is not None else out,
             'proxies': proxies
         })
     for pmid_item in pmid:
