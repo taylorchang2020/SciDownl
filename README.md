@@ -210,6 +210,20 @@ $ scidownl download --doi-file dois.txt --doi https://doi.org/10.1145/2785956.27
 
 Because more than one paper is downloaded, `--out` is always treated as a directory (see [Customize the output location](#customize-the-output-location-of-papers) below).
 
+**Optional per-paper output path.** You can give each DOI its own output path by appending it after a comma: `DOI,OUTPUT_PATH`. The first comma separates the DOI from the path (so the path itself may contain commas). When a line has a path, it overrides `--out` for that paper; lines without a path still fall back to `--out`. Missing parent directories are created automatically.
+
+```text
+# papers.txt — "DOI,output_path", one entry per line
+https://doi.org/10.1016/j.measurement.2021.109460,knowledge_base/papers/FD-02.pdf
+https://doi.org/10.3390/machines10040240,knowledge_base/papers/FD-05.pdf
+10.1002/chin.197335038                      # no path -> uses --out
+```
+
+```bash
+# FD-02.pdf / FD-05.pdf go to their listed paths; the last DOI goes to ./papers/
+$ scidownl download --doi-file papers.txt --out ./papers/
+```
+
 #### Customize the output location of papers
 
 By default, the downloaded paper is named by the paper's title. With option `-o` or `--out`，you can customize the output location of downloaded papers, whcih could be an absolute path or a relative path, and a direcotry or a file path.
